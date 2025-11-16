@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    environment: ENV_GAMEVAULT
 
     steps:
     - name: Checkout code

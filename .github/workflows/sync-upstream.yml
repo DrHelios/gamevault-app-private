@@ -15,6 +15,7 @@ on:
 jobs:
   sync-and-build:
     runs-on: ubuntu-latest
+    environment: ENV_GAMEVAULT
 
     steps:
     - name: Checkout private repo
