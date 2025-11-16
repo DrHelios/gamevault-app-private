@@ -1,0 +1,100 @@
+name: Build GameVault (Paywall Removed)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Apply Paywall Removal
+      run: |
+        Write-Host "Applying paywall removal modification..." -ForegroundColor Cyan
+        .\apply-paywall-removal.ps1
+      shell: pwsh
+
+    - name: Restore dependencies
+      run: dotnet restore gamevault/gamevault.csproj
+
+    - name: Build
+      run: dotnet build gamevault/gamevault.csproj --configuration Release --no-restore
+
+    - name: Create release package
+      run: |
+        $version = "custom-build-$(Get-Date -Format 'yyyy-MM-dd-HHmmss')"
+        $outputPath = "gamevault/bin/Release/net8.0-windows10.0.22000.0"
+        $artifactPath = "GameVault-$version"
+
+        New-Item -ItemType Directory -Force -Path $artifactPath
+        Copy-Item -Path "$outputPath/*" -Destination $artifactPath -Recurse
+
+        # Create version info file
+        @"
+        GameVault Build Information
+        ===========================
+        Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+        Commit: $env:GITHUB_SHA
+        Branch: $env:GITHUB_REF_NAME
+
+        Modifications:
+        - Paywall removed for personal use
+        - All premium features unlocked
+
+        See PAYWALL_REMOVAL.md for details
+        "@ | Out-File -FilePath "$artifactPath/BUILD_INFO.txt"
+
+        # Copy documentation
+        Copy-Item -Path "PAYWALL_REMOVAL.md" -Destination $artifactPath -ErrorAction SilentlyContinue
+        Copy-Item -Path "QUICK_START.md" -Destination $artifactPath -ErrorAction SilentlyContinue
+        Copy-Item -Path "README.md" -Destination $artifactPath -ErrorAction SilentlyContinue
+
+        Compress-Archive -Path $artifactPath -DestinationPath "GameVault-NoPaywall-$version.zip"
+      shell: pwsh
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: gamevault-windows-no-paywall
+        path: GameVault-NoPaywall-*.zip
+        retention-days: 90
+
+    - name: Upload build directory
+      uses: actions/upload-artifact@v4
+      with:
+        name: gamevault-windows-build-files
+        path: gamevault/bin/Release/net8.0-windows10.0.22000.0/
+        retention-days: 30
+
+    - name: Build summary
+      run: |
+        Write-Host "✅ Build completed successfully!" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Download the artifacts from the Actions tab:" -ForegroundColor Cyan
+        Write-Host "  - gamevault-windows-no-paywall.zip (ready to run)" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "All premium features unlocked:" -ForegroundColor Green
+        Write-Host "  ✅ Multiple User Profiles" -ForegroundColor Green
+        Write-Host "  ✅ Cloud Saves" -ForegroundColor Green
+        Write-Host "  ✅ Steam Shortcuts Sync" -ForegroundColor Green
+        Write-Host "  ✅ Discord Rich Presence" -ForegroundColor Green
+        Write-Host "  ✅ Premium Themes" -ForegroundColor Green
+        Write-Host "  ✅ Animated GIF Avatars" -ForegroundColor Green
+        Write-Host "  ✅ CLI Auto-Install" -ForegroundColor Green
+        Write-Host "  ✅ Install/Uninstall Commands" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "⚠️  Remember: For PERSONAL USE only" -ForegroundColor Yellow
+        Write-Host "    Support the devs: https://gamevau.lt/gamevault-plus" -ForegroundColor Yellow
+      shell: pwsh

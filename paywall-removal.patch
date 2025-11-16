@@ -1,0 +1,17 @@
+diff --git a/gamevault/Models/PhalcodeProduct.cs b/gamevault/Models/PhalcodeProduct.cs
+index c354534..96763da 100644
+--- a/gamevault/Models/PhalcodeProduct.cs
++++ b/gamevault/Models/PhalcodeProduct.cs
+@@ -39,8 +39,10 @@ namespace gamevault.Models
+         public bool? CancelAtPeriodEnd { get; set; }
+         public string? UserName { get; set; }
+         public bool IsActive()
+-        {          
+-            return (CurrentPeriodEnd != null && CurrentPeriodEnd > DateTime.UtcNow);
++        {
++            // Modified for personal use - always return true to enable all features
++            // Original check: return (CurrentPeriodEnd != null && CurrentPeriodEnd > DateTime.UtcNow);
++            return true;
+         }
+     }
+ }

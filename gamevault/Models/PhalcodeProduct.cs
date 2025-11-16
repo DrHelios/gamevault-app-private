@@ -39,8 +39,10 @@ namespace gamevault.Models
         public bool? CancelAtPeriodEnd { get; set; }
         public string? UserName { get; set; }
         public bool IsActive()
-        {          
-            return (CurrentPeriodEnd != null && CurrentPeriodEnd > DateTime.UtcNow);
+        {
+            // Modified for personal use - always return true to enable all features
+            // Original check: return (CurrentPeriodEnd != null && CurrentPeriodEnd > DateTime.UtcNow);
+            return true;
         }
     }
 }
