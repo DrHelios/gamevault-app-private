@@ -1,0 +1,131 @@
+name: Sync with Upstream & Auto-Build
+
+on:
+  # Vérifie automatiquement toutes les 6 heures
+  schedule:
+    - cron: '0 */6 * * *'
+
+  # Permet le déclenchement manuel
+  workflow_dispatch:
+
+  # Déclenche aussi sur push (pour tester)
+  push:
+    branches: [ master, main ]
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout private repo
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GH_PAT }}
+        fetch-depth: 0
+
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions Bot"
+        git config user.email "actions@github.com"
+
+    - name: Add upstream remote
+      run: |
+        git remote add upstream https://github.com/Phalcode/gamevault-app.git || true
+        git remote -v
+
+    - name: Fetch upstream changes
+      run: |
+        git fetch upstream
+        echo "📥 Fetched upstream changes"
+
+    - name: Check for updates
+      id: check_updates
+      run: |
+        UPSTREAM_SHA=$(git rev-parse upstream/master)
+        CURRENT_SHA=$(git rev-parse HEAD)
+
+        echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
+        echo "current_sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
+
+        if [ "$UPSTREAM_SHA" != "$CURRENT_SHA" ]; then
+          echo "has_updates=true" >> $GITHUB_OUTPUT
+          echo "🔄 New updates detected!"
+        else
+          echo "has_updates=false" >> $GITHUB_OUTPUT
+          echo "✅ Already up to date"
+        fi
+
+    - name: Merge upstream changes
+      if: steps.check_updates.outputs.has_updates == 'true'
+      run: |
+        echo "🔀 Merging upstream/master into master..."
+        git merge upstream/master --no-edit || {
+          echo "⚠️ Merge conflict detected, attempting auto-resolution..."
+          # En cas de conflit, garder notre version du paywall removal
+          git checkout --ours gamevault/Models/PhalcodeProduct.cs 2>/dev/null || true
+          git add gamevault/Models/PhalcodeProduct.cs 2>/dev/null || true
+          git commit -m "Merge upstream with paywall removal preserved" || true
+        }
+
+    - name: Re-apply paywall removal
+      if: steps.check_updates.outputs.has_updates == 'true'
+      run: |
+        echo "🔓 Re-applying paywall removal..."
+
+        # Vérifier si déjà appliqué
+        if grep -q "Modified for personal use" gamevault/Models/PhalcodeProduct.cs; then
+          echo "✅ Paywall removal already applied"
+        else
+          echo "📝 Applying paywall removal modification..."
+
+          # Appliquer le patch
+          git apply paywall-removal.patch || {
+            echo "⚠️ Patch failed, applying manual modification..."
+
+            # Modification manuelle en cas d'échec du patch
+            sed -i '/public bool IsActive()/,/^[[:space:]]*}$/ {
+              /return (CurrentPeriodEnd != null && CurrentPeriodEnd > DateTime.UtcNow);/c\
+            // Modified for personal use - always return true to enable all features\
+            // Original check: return (CurrentPeriodEnd != null && CurrentPeriodEnd > DateTime.UtcNow);\
+            return true;
+            }' gamevault/Models/PhalcodeProduct.cs
+          }
+
+          git add gamevault/Models/PhalcodeProduct.cs
+          git commit -m "Re-apply paywall removal after upstream merge" || true
+        fi
+
+    - name: Push changes
+      if: steps.check_updates.outputs.has_updates == 'true'
+      run: |
+        echo "⬆️ Pushing changes to private repo..."
+        git push origin master
+        echo "✅ Changes pushed successfully!"
+
+    - name: Trigger build workflow
+      if: steps.check_updates.outputs.has_updates == 'true'
+      run: |
+        echo "🚀 Build will be triggered automatically by push event"
+
+    - name: Summary
+      run: |
+        echo "## 🎯 Sync Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ steps.check_updates.outputs.has_updates }}" == "true" ]; then
+          echo "✅ **Upstream synchronized successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Merged from: \`upstream/master\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Upstream SHA: \`${{ steps.check_updates.outputs.upstream_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Previous SHA: \`${{ steps.check_updates.outputs.current_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Paywall removal: ✅ Re-applied" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: 🚀 Triggered" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "ℹ️ **No updates available**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The fork is already up to date with upstream." >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "🔄 Next check: In 6 hours" >> $GITHUB_STEP_SUMMARY
